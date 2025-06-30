@@ -1,0 +1,35 @@
+name: offline_sync_manager
+description: A Flutter plugin for offline-first data synchronization with local storage, sync queue, conflict resolution, retries, and real-time event broadcasting.
+version: 0.0.1
+homepage: https://github.com/santhosh-ceo/offline_sync_manager
+
+environment:
+  sdk: ^3.7.2
+  flutter: '>=3.3.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  hive: ^2.2.3
+  hive_flutter: ^1.1.0
+  http: ^1.2.2
+  connectivity_plus: ^6.0.5
+  uuid: ^4.5.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+
+flutter:
+
+  plugin:
+    platforms:
+      android:
+        package: com.example.offline_sync_manager
+        pluginClass: OfflineSyncManagerPlugin
+      ios:
+        pluginClass: OfflineSyncManagerPlugin
+
+
+
