@@ -3,20 +3,24 @@ import 'package:offline_sync_manager/offline_sync_manager.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  runApp(const MyApp());
+  runApp(const WeatherApp());
 }
 
-class MyApp extends StatefulWidget {
-  const MyApp({super.key});
+class WeatherApp extends StatefulWidget {
+  const WeatherApp({super.key});
 
   @override
-  State<MyApp> createState() => _MyAppState();
+  State<WeatherApp> createState() => _WeatherAppState();
 }
 
-class _MyAppState extends State<MyApp> {
+class _WeatherAppState extends State<WeatherApp> {
   late OfflineSyncManager syncManager;
   bool _isInitialized = false;
-  String _status = 'Initializing...';
+  String _syncStatus = 'Initializing...';
+  final TextEditingController _cityController = TextEditingController();
+  final TextEditingController _tempController = TextEditingController();
+  final TextEditingController _conditionController = TextEditingController();
+  List<Map<String, dynamic>> _weatherData = [];
 
   @override
   void initState() {
@@ -30,68 +34,120 @@ class _MyAppState extends State<MyApp> {
     );
     syncManager.syncEvents.listen((event) {
       setState(() {
-        _status = 'Status: ${event.status} - ${event.message ?? ''}';
+        _syncStatus = 'Sync: ${event.status} - ${event.message ?? ''}';
       });
+      _loadWeatherData();
     });
     setState(() {
       _isInitialized = true;
+    });
+    _loadWeatherData();
+  }
+
+  Future<void> _loadWeatherData() async {
+    // Simulate reading all weather data from Hive
+    final box = syncManager.read;
+    final data = <Map<String, dynamic>>[];
+    // Note: Hive doesn't provide a direct way to list all keys, so assume IDs are known or stored separately
+    // For simplicity, we'll use a predefined list of IDs or extend the plugin to store keys
+    for (var i = 1; i <= 10; i++) {
+      final item = await box('weather', i.toString());
+      if (item != null) data.add(item);
+    }
+    setState(() {
+      _weatherData = data;
     });
   }
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      theme: ThemeData(primarySwatch: Colors.blue),
       home: Scaffold(
-        appBar: AppBar(title: const Text('Offline Sync Manager Demo')),
+        appBar: AppBar(
+          title: const Text('Weather Sync App'),
+          centerTitle: true,
+        ),
         body: _isInitialized
-            ? Center(
+            ? Padding(
+          padding: const EdgeInsets.all(16.0),
           child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text(_status),
+              Text(_syncStatus, style: const TextStyle(fontWeight: FontWeight.bold)),
+              const SizedBox(height: 16),
+              TextField(
+                controller: _cityController,
+                decoration: const InputDecoration(labelText: 'City'),
+              ),
+              TextField(
+                controller: _tempController,
+                decoration: const InputDecoration(labelText: 'Temperature (°C)'),
+                keyboardType: TextInputType.number,
+              ),
+              TextField(
+                controller: _conditionController,
+                decoration: const InputDecoration(labelText: 'Condition'),
+              ),
+              const SizedBox(height: 16),
               ElevatedButton(
                 onPressed: () async {
+                  final id = DateTime.now().millisecondsSinceEpoch.toString();
                   await syncManager.create(
-                    collection: 'notes',
+                    collection: 'weather',
                     data: {
-                      'id': '1',
-                      'title': 'Test Note',
-                      'content': 'This is a test note.',
+                      'id': id,
+                      'city': _cityController.text,
+                      'temperature': double.parse(_tempController.text),
+                      'condition': _conditionController.text,
                     },
                   );
+                  _cityController.clear();
+                  _tempController.clear();
+                  _conditionController.clear();
                 },
-                child: const Text('Create Note'),
+                child: const Text('Add Weather'),
               ),
-              ElevatedButton(
-                onPressed: () async {
-                  await syncManager.update(
-                    collection: 'notes',
-                    data: {
-                      'id': '1',
-                      'title': 'Updated Note',
-                      'content': 'This is an updated note.',
-                    },
-                  );
-                },
-                child: const Text('Update Note'),
-              ),
-              ElevatedButton(
-                onPressed: () async {
-                  await syncManager.delete(
-                    collection: 'notes',
-                    id: '1',
-                  );
-                },
-                child: const Text('Delete Note'),
-              ),
-              ElevatedButton(
-                onPressed: () async {
-                  final data = await syncManager.read('notes', '1');
-                  setState(() {
-                    _status = 'Read: ${data?.toString() ?? 'No data'}';
-                  });
-                },
-                child: const Text('Read Note'),
+              const SizedBox(height: 16),
+              Expanded(
+                child: ListView.builder(
+                  itemCount: _weatherData.length,
+                  itemBuilder: (context, index) {
+                    final data = _weatherData[index];
+                    return ListTile(
+                      title: Text('${data['city']} - ${data['condition']}'),
+                      subtitle: Text('Temp: ${data['temperature']}°C'),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            icon: const Icon(Icons.edit),
+                            onPressed: () async {
+                              await syncManager.update(
+                                collection: 'weather',
+                                data: {
+                                  'id': data['id'],
+                                  'city': data['city'],
+                                  'temperature': data['temperature'] + 1.0,
+                                  'condition': 'Updated',
+                                },
+                              );
+                            },
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.delete),
+                            onPressed: () async {
+                              await syncManager.delete(
+                                collection: 'weather',
+                                id: data['id'],
+                              );
+                            },
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
               ),
             ],
           ),
@@ -104,6 +160,9 @@ class _MyAppState extends State<MyApp> {
   @override
   void dispose() {
     syncManager.dispose();
+    _cityController.dispose();
+    _tempController.dispose();
+    _conditionController.dispose();
     super.dispose();
   }
 }
