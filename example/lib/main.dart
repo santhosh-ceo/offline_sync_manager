@@ -1,26 +1,30 @@
 import 'package:flutter/material.dart';
 import 'package:offline_sync_manager/offline_sync_manager.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  runApp(const WeatherApp());
+  await Hive.initFlutter();
+  await Hive.openBox('todo_ids'); // Track todo IDs
+  runApp(const TodoApp());
 }
 
-class WeatherApp extends StatefulWidget {
-  const WeatherApp({super.key});
+class TodoApp extends StatefulWidget {
+  const TodoApp({super.key});
 
   @override
-  State<WeatherApp> createState() => _WeatherAppState();
+  State<TodoApp> createState() => _TodoAppState();
 }
 
-class _WeatherAppState extends State<WeatherApp> {
+class _TodoAppState extends State<TodoApp> {
   late OfflineSyncManager syncManager;
   bool _isInitialized = false;
   String _syncStatus = 'Initializing...';
-  final TextEditingController _cityController = TextEditingController();
-  final TextEditingController _tempController = TextEditingController();
-  final TextEditingController _conditionController = TextEditingController();
-  List<Map<String, dynamic>> _weatherData = [];
+  String _errorMessage = '';
+  bool _isOnline = true;
+  final TextEditingController _titleController = TextEditingController();
+  List<Map<String, dynamic>> _todos = [];
+  final Box _todoIdsBox = Hive.box('todo_ids');
 
   @override
   void initState() {
@@ -30,33 +34,48 @@ class _WeatherAppState extends State<WeatherApp> {
 
   Future<void> _initializeSyncManager() async {
     syncManager = await OfflineSyncManager.initialize(
-      baseUrl: 'https://api.example.com', // Replace with your server URL
+      baseUrl: 'https://jsonplaceholder.typicode.com',
     );
     syncManager.syncEvents.listen((event) {
       setState(() {
         _syncStatus = 'Sync: ${event.status} - ${event.message ?? ''}';
       });
-      _loadWeatherData();
+      _loadTodos();
     });
     setState(() {
       _isInitialized = true;
     });
-    _loadWeatherData();
+    // Initialize todo IDs from Hive
+    _todoIdsBox.values.forEach((id) {
+      if (!_todoIdsBox.containsKey(id)) {
+        _todoIdsBox.put(id, id);
+      }
+    });
+    await _loadTodos();
   }
 
-  Future<void> _loadWeatherData() async {
-    // Simulate reading all weather data from Hive
-    final box = syncManager.read;
-    final data = <Map<String, dynamic>>[];
-    // Note: Hive doesn't provide a direct way to list all keys, so assume IDs are known or stored separately
-    // For simplicity, we'll use a predefined list of IDs or extend the plugin to store keys
-    for (var i = 1; i <= 10; i++) {
-      final item = await box('weather', i.toString());
-      if (item != null) data.add(item);
+  Future<void> _loadTodos() async {
+    final todos = <Map<String, dynamic>>[];
+    for (final id in _todoIdsBox.values) {
+      final todo = await syncManager.read('todos', id.toString());
+      if (todo != null) todos.add(todo);
     }
     setState(() {
-      _weatherData = data;
+      _todos = todos;
     });
+  }
+
+  bool _validateInput() {
+    if (_titleController.text.isEmpty) {
+      setState(() {
+        _errorMessage = 'Todo title is required.';
+      });
+      return false;
+    }
+    setState(() {
+      _errorMessage = '';
+    });
+    return true;
   }
 
   @override
@@ -65,7 +84,7 @@ class _WeatherAppState extends State<WeatherApp> {
       theme: ThemeData(primarySwatch: Colors.blue),
       home: Scaffold(
         appBar: AppBar(
-          title: const Text('Weather Sync App'),
+          title: const Text('Todo Sync App'),
           centerTitle: true,
         ),
         body: _isInitialized
@@ -74,76 +93,95 @@ class _WeatherAppState extends State<WeatherApp> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text(_syncStatus, style: const TextStyle(fontWeight: FontWeight.bold)),
+              Text(
+                _syncStatus,
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+              if (_errorMessage.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Text(
+                  _errorMessage,
+                  style: const TextStyle(color: Colors.red),
+                ),
+              ],
               const SizedBox(height: 16),
               TextField(
-                controller: _cityController,
-                decoration: const InputDecoration(labelText: 'City'),
-              ),
-              TextField(
-                controller: _tempController,
-                decoration: const InputDecoration(labelText: 'Temperature (°C)'),
-                keyboardType: TextInputType.number,
-              ),
-              TextField(
-                controller: _conditionController,
-                decoration: const InputDecoration(labelText: 'Condition'),
+                controller: _titleController,
+                decoration: const InputDecoration(labelText: 'Todo Title'),
               ),
               const SizedBox(height: 16),
               ElevatedButton(
                 onPressed: () async {
-                  final id = DateTime.now().millisecondsSinceEpoch.toString();
-                  await syncManager.create(
-                    collection: 'weather',
-                    data: {
-                      'id': id,
-                      'city': _cityController.text,
-                      'temperature': double.parse(_tempController.text),
-                      'condition': _conditionController.text,
-                    },
-                  );
-                  _cityController.clear();
-                  _tempController.clear();
-                  _conditionController.clear();
+                  if (_validateInput()) {
+                    final id = DateTime.now().millisecondsSinceEpoch.toString();
+                    await syncManager.create(
+                      collection: 'todos',
+                      data: {
+                        'id': id,
+                        'title': _titleController.text,
+                        'completed': false,
+                        'userId': 1, // Required by JSONPlaceholder
+                        'timestamp': DateTime.now().toIso8601String(),
+                      },
+                    );
+                    await _todoIdsBox.put(id, id);
+                    _titleController.clear();
+                    await _loadTodos();
+                  }
                 },
-                child: const Text('Add Weather'),
+                child: const Text('Add Todo'),
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  const Text('Simulate Online: '),
+                  Switch(
+                    value: _isOnline,
+                    onChanged: (value) async {
+                      setState(() {
+                        _isOnline = value;
+                      });
+                      syncManager.setOnlineStatus(_isOnline);
+                      if (_isOnline) {
+                        await syncManager.syncService.sync();
+                      }
+                    },
+                  ),
+                ],
               ),
               const SizedBox(height: 16),
               Expanded(
                 child: ListView.builder(
-                  itemCount: _weatherData.length,
+                  itemCount: _todos.length,
                   itemBuilder: (context, index) {
-                    final data = _weatherData[index];
+                    final todo = _todos[index];
                     return ListTile(
-                      title: Text('${data['city']} - ${data['condition']}'),
-                      subtitle: Text('Temp: ${data['temperature']}°C'),
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          IconButton(
-                            icon: const Icon(Icons.edit),
-                            onPressed: () async {
-                              await syncManager.update(
-                                collection: 'weather',
-                                data: {
-                                  'id': data['id'],
-                                  'city': data['city'],
-                                  'temperature': data['temperature'] + 1.0,
-                                  'condition': 'Updated',
-                                },
-                              );
+                      title: Text(todo['title']),
+                      leading: Checkbox(
+                        value: todo['completed'],
+                        onChanged: (value) async {
+                          await syncManager.update(
+                            collection: 'todos',
+                            data: {
+                              'id': todo['id'],
+                              'title': todo['title'],
+                              'completed': value ?? false,
+                              'userId': 1,
+                              'timestamp': DateTime.now().toIso8601String(),
                             },
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.delete),
-                            onPressed: () async {
-                              await syncManager.delete(
-                                collection: 'weather',
-                                id: data['id'],
-                              );
-                            },
-                          ),
-                        ],
+                          );
+                        },
+                      ),
+                      trailing: IconButton(
+                        icon: const Icon(Icons.delete),
+                        onPressed: () async {
+                          await syncManager.delete(
+                            collection: 'todos',
+                            id: todo['id'],
+                          );
+                          await _todoIdsBox.delete(todo['id']);
+                          await _loadTodos();
+                        },
                       ),
                     );
                   },
@@ -160,9 +198,7 @@ class _WeatherAppState extends State<WeatherApp> {
   @override
   void dispose() {
     syncManager.dispose();
-    _cityController.dispose();
-    _tempController.dispose();
-    _conditionController.dispose();
+    _titleController.dispose();
     super.dispose();
   }
 }

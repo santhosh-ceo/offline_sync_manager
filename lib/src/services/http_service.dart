@@ -4,8 +4,9 @@ import 'package:offline_sync_manager/src/models/sync_operation.dart';
 
 class HttpService {
   final String baseUrl;
+  final http.Client _client;
 
-  HttpService(this.baseUrl);
+  HttpService(this.baseUrl, {http.Client? client}) : _client = client ?? http.Client();
 
   Future<Map<String, dynamic>> syncOperation(SyncOperation operation) async {
     final url = Uri.parse('$baseUrl/${operation.collection}');
@@ -15,21 +16,21 @@ class HttpService {
       http.Response response;
       switch (operation.type) {
         case OperationType.create:
-          response = await http.post(
+          response = await _client.post(
             url,
             headers: headers,
             body: jsonEncode(operation.data),
           );
           break;
         case OperationType.update:
-          response = await http.put(
+          response = await _client.put(
             url,
             headers: headers,
             body: jsonEncode(operation.data),
           );
           break;
         case OperationType.delete:
-          response = await http.delete(
+          response = await _client.delete(
             Uri.parse('$url/${operation.data['id']}'),
             headers: headers,
           );

@@ -15,6 +15,7 @@ class SyncService {
       StreamController.broadcast();
   Timer? _retryTimer;
   bool _isSyncing = false;
+  bool _isOnline = true;
 
   SyncService({
     required this.hiveService,
@@ -33,7 +34,8 @@ class SyncService {
   }
 
   Future<void> sync() async {
-    if (_isSyncing || !(await connectivityService.isOnline())) return;
+    if (_isSyncing || !(_isOnline && await connectivityService.isOnline()))
+      return;
 
     _isSyncing = true;
     final operations = hiveService.getPendingOperations();
@@ -62,7 +64,7 @@ class SyncService {
         );
       } catch (e) {
         operation.retryCount++;
-        await hiveService.enqueueOperation(operation); // Update retry count
+        await hiveService.enqueueOperation(operation);
         _eventController.add(
           SyncEvent(
             SyncStatus.failed,
@@ -75,6 +77,10 @@ class SyncService {
     }
 
     _isSyncing = false;
+  }
+
+  void setOnlineStatus(bool isOnline) {
+    _isOnline = isOnline;
   }
 
   Future<void> _applyOperation(
@@ -121,8 +127,9 @@ class SyncService {
   }
 
   void startAutoSync() {
-    connectivityService.onConnectivityChanged.listen((result) {
-      if (result != ConnectivityResult.none) {
+    connectivityService.onConnectivityChanged.listen((results) {
+      if (results.contains(ConnectivityResult.wifi) ||
+          results.contains(ConnectivityResult.mobile)) {
         sync();
       }
     });
