@@ -9,7 +9,7 @@ import 'package:http/http.dart' as http;
 class OfflineSyncManager {
   late final HiveService _hiveService;
   late final SyncService _syncService;
-  bool _isOnline = true; // Track simulated online status
+  bool _isOnline = true;
 
   OfflineSyncManager._();
 

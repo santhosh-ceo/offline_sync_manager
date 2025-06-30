@@ -34,8 +34,9 @@ class SyncService {
   }
 
   Future<void> sync() async {
-    if (_isSyncing || !(_isOnline && await connectivityService.isOnline()))
+    if (_isSyncing || !(_isOnline && await connectivityService.isOnline())) {
       return;
+    }
 
     _isSyncing = true;
     final operations = hiveService.getPendingOperations();
