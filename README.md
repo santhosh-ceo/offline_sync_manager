@@ -27,6 +27,18 @@ final syncManager = await OfflineSyncManager.initialize(
   baseUrl: 'https://api.example.com',
 );
 ```
+## Setup
+
+Initialize Hive: Ensure Hive is initialized before using the plugin (handled automatically by the plugin).
+
+Configure the Plugin: Initialize the OfflineSyncManager with your API base URL.
+
+Handle Permissions: Add internet and network state permissions for Android in android/app/src/main/AndroidManifest.xml:
+```
+<uses-permission android:name="android.permission.INTERNET" />
+<uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+```
+
 Perform CRUD operations:
 ```
 // Create
